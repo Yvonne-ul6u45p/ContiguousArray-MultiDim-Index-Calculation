@@ -9,24 +9,24 @@
 
 using namespace std;
 
-class Matrix {
+class MultiDArray {
 
     public:
 
-        Matrix(size_t nrow, size_t ncol)
+        MultiDArray(size_t nrow, size_t ncol)
         : m_nrow(nrow), m_ncol(ncol)
         {
             reset_buffer(nrow, ncol);
         }
 
-        Matrix(size_t nrow, size_t ncol, vector<double> const & vec)
+        MultiDArray(size_t nrow, size_t ncol, vector<double> const & vec)
         : m_nrow(nrow), m_ncol(ncol)
         {
             reset_buffer(nrow, ncol);
             (*this) = vec;
         }
 
-        Matrix & operator=(vector<double> const & vec)
+        MultiDArray & operator=(vector<double> const & vec)
         {
             if (size() != vec.size())
             {
@@ -46,7 +46,7 @@ class Matrix {
             return *this;
         }
 
-        Matrix(Matrix const & other)
+        MultiDArray(MultiDArray const & other)
         : m_nrow(other.m_nrow), m_ncol(other.m_ncol)
         {
             reset_buffer(other.m_nrow, other.m_ncol);
@@ -59,7 +59,7 @@ class Matrix {
             }
         }
 
-        Matrix & operator=(Matrix const & other)
+        MultiDArray & operator=(MultiDArray const & other)
         {
             if (this == &other) {
                 return *this;
@@ -77,7 +77,7 @@ class Matrix {
             return *this;
         }
 
-        Matrix(Matrix && other)
+        MultiDArray(MultiDArray && other)
         : m_nrow(other.m_nrow), m_ncol(other.m_ncol)
         {
             reset_buffer(0, 0);
@@ -86,7 +86,7 @@ class Matrix {
             swap(m_buffer, other.m_buffer);
         }
 
-        Matrix & operator=(Matrix && other)
+        MultiDArray & operator=(MultiDArray && other)
         {
             if (this == &other) {
                 return *this;
@@ -98,7 +98,7 @@ class Matrix {
             return *this;
         }
 
-        ~Matrix()   // return, clear buffer
+        ~MultiDArray()   // return, clear buffer
         {
             reset_buffer(0, 0);
         }
@@ -112,7 +112,7 @@ class Matrix {
             return m_buffer[index(row, col)];
         }
 
-        bool operator== (Matrix const & other)
+        bool operator== (MultiDArray const & other)
         {
             if ((m_ncol != other.ncol()) || (m_nrow != other.ncol()))
             {
@@ -133,7 +133,7 @@ class Matrix {
             return true;
         }
 
-        bool operator!= (Matrix const & other)
+        bool operator!= (MultiDArray const & other)
         {
             return !(*this == other);
         }
@@ -159,7 +159,8 @@ class Matrix {
             return std::vector<double>(m_buffer, m_buffer+size());
         }
 
-        Matrix multiply_naive(Matrix const & other)
+        // Naive Multi-Dimension Array & Multi-Dimension Array Multiplication.
+        MultiDArray multiply_naive(MultiDArray const & other)
         {
             // validate_multiplication
             if (this->ncol() != other.nrow()) {
@@ -168,7 +169,7 @@ class Matrix {
                     "differs from that of second matrix row");
             }
 
-            Matrix ret(this->nrow(), other.ncol());
+            MultiDArray ret(this->nrow(), other.ncol());
 
             for (size_t i=0; i<ret.nrow(); ++i)
             {
@@ -187,14 +188,8 @@ class Matrix {
             return ret;
         }
 
-
-        // Vector-Matrix multiplication.
-        Matrix operator* (std::vector<double> const & vec) {
-            // std::cout << ">> operator* (std::vector<double> const & vec)" << std::endl;
-        }
-
-        // Tiled matrix-matrix multiplication.
-        Matrix multiply_tile(Matrix const & other, size_t const tsize) {
+        // Tiled Multi-Dimension Array & Multi-Dimension Array Multiplication.
+        MultiDArray multiply_tile(MultiDArray const & other, size_t const tsize) {
             // std::cout << ">> multiply_tile(Matrix const & other, size_t const tsize)" << std::endl;
             // validate_multiplication
             if (this->ncol() != other.nrow()) {
@@ -203,7 +198,7 @@ class Matrix {
                     "differs from that of second matrix row");
             }
 
-            Matrix ret(this->nrow(), other.ncol());
+            MultiDArray ret(this->nrow(), other.ncol());
 
             // const size_t ntrow1 = std::ceil(mat1.nrow() / tsize);
             // const size_t ntcol1 = std::ceil(mat1.ncol() / tsize);
@@ -241,17 +236,17 @@ class Matrix {
             return ret;
         }
 
-        // Element-wise Matrix Multiplication
-        Matrix elemwise(Matrix const & other) {
+        // Element-wise Multi-Dimension Array Multiplication
+        MultiDArray elemwise(MultiDArray const & other) {
             // operator* (Matrix const & other)" << std::endl;
         }
 
-        Matrix Sum(){};
-        Matrix Mean(){};
-        Matrix Var(){};
-        Matrix Std(){};
-        // Linear Self-Covariance Matrix Multiplication
-        Matrix Cov(){};
+        MultiDArray Sum(){};
+        MultiDArray Mean(){};
+        MultiDArray Var(){};
+        MultiDArray Std(){};
+        // Linear Self-Covariance Multi-Dimension Array Multiplication
+        MultiDArray Cov(){};
 
     private:
 
@@ -283,7 +278,7 @@ class Matrix {
 };
 
 
-void validate_multiplication(Matrix const & mat1, Matrix const & mat2)
+void validate_multiplication(MultiDArray const & mat1, MultiDArray const & mat2)
 {
     if (mat1.ncol() != mat2.nrow())
     {
@@ -293,12 +288,12 @@ void validate_multiplication(Matrix const & mat1, Matrix const & mat2)
     }
 }
 
-// Naive matrix-matrix multiplication.
-Matrix multiply_naive(Matrix const & mat1, Matrix const & mat2)
+// Naive Multi-Dimension Array & Multi-Dimension Array Multiplication.
+MultiDArray multiply_naive(MultiDArray const & mat1, MultiDArray const & mat2)
 {
     validate_multiplication(mat1, mat2);
 
-    Matrix ret(mat1.nrow(), mat2.ncol());
+    MultiDArray ret(mat1.nrow(), mat2.ncol());
 
     for (size_t i=0; i<ret.nrow(); ++i)
     {
@@ -317,12 +312,12 @@ Matrix multiply_naive(Matrix const & mat1, Matrix const & mat2)
     return ret;
 }
 
-// Tiled matrix matrix multiplication.
-Matrix multiply_tile(Matrix const & mat1, Matrix const & mat2, size_t const tsize)
+// Tiled Multi-Dimension Array & Multi-Dimension Array Multiplication.
+MultiDArray multiply_tile(MultiDArray const & mat1, MultiDArray const & mat2, size_t const tsize)
 {
     validate_multiplication(mat1, mat2);
 
-    Matrix ret(mat1.nrow(), mat2.ncol());
+    MultiDArray ret(mat1.nrow(), mat2.ncol());
 
     // const size_t ntrow1 = std::ceil(mat1.nrow() / tsize);
     // const size_t ntcol1 = std::ceil(mat1.ncol() / tsize);
@@ -360,11 +355,11 @@ Matrix multiply_tile(Matrix const & mat1, Matrix const & mat2, size_t const tsiz
     return ret;
 }
 
-Matrix multiply_mkl(Matrix const & mat1, Matrix const & mat2)
+MultiDArray multiply_mkl(MultiDArray const & mat1, MultiDArray const & mat2)
 {
     validate_multiplication(mat1, mat2);
 
-    Matrix ret(mat1.nrow(), mat2.ncol());
+    MultiDArray ret(mat1.nrow(), mat2.ncol());
 
     cblas_dgemm(
         CblasRowMajor   /* const CBLAS_LAYOUT Layout */
@@ -387,7 +382,7 @@ Matrix multiply_mkl(Matrix const & mat1, Matrix const & mat2)
 }
 
 
-std::ostream & operator << (std::ostream & ostr, Matrix const & mat)
+std::ostream & operator << (std::ostream & ostr, MultiDArray const & mat)
 {
     // std::cout << "operator << (print matrix)" << std::endl;
     for (size_t i=0; i<mat.nrow(); ++i)
@@ -405,20 +400,20 @@ std::ostream & operator << (std::ostream & ostr, Matrix const & mat)
 int main(int argc, char ** argv)
 {
     std::cout << ">>> A(2x3) times B(3x2):" << std::endl;
-    Matrix mat1(2, 3, std::vector<double>{1, 2, 3, 4, 5, 6});
-    Matrix mat2(3, 2, std::vector<double>{1, 2, 3, 4, 5, 6});
+    MultiDArray mat1(2, 3, std::vector<double>{1, 2, 3, 4, 5, 6});
+    MultiDArray mat2(3, 2, std::vector<double>{1, 2, 3, 4, 5, 6});
 
-    std::cout << "matrix A (2x3):" << mat1 << std::endl;
-    std::cout << "matrix B (3x2):" << mat2 << std::endl;
+    std::cout << "Multi-D Array A (2x3):" << mat1 << std::endl;
+    std::cout << "Multi-D Array B (3x2):" << mat2 << std::endl;
 
-    Matrix ret_naive = multiply_naive(mat1, mat2);
-    std::cout << "multiply_naive result matrix C (2x2) = AB:" << ret_naive << std::endl;
+    MultiDArray ret_naive = multiply_naive(mat1, mat2);
+    std::cout << "multiply_naive result Multi-D Array C (2x2) = AB:" << ret_naive << std::endl;
 
-    Matrix ret_naive_com = mat1.multiply_naive(mat2);
-    std::cout << "multiply_naive result matrix C (2x2) = AB:" << ret_naive_com << std::endl;
+    MultiDArray ret_naive_com = mat1.multiply_naive(mat2);
+    std::cout << "multiply_naive result Multi-D Array C (2x2) = AB:" << ret_naive_com << std::endl;
 
-    Matrix ret_mkl = multiply_mkl(mat1, mat2);
-    std::cout << "multiply_mkl result matrix C (2x2) = AB:" << ret_mkl << std::endl;
+    MultiDArray ret_mkl = MultiDArray(mat1, mat2);
+    std::cout << "multiply_mkl result Multi-D Array C (2x2) = AB:" << ret_mkl << std::endl;
 
     return 0;
 }
