@@ -22,19 +22,17 @@ dimensional index calculation in a library.
 ## Prospective Users
 
 This project targets users who search for an easy-handle multi-dimensional
-matrix calculation using contiguous array.
+array calculation using contiguous array.
 
 
 ## System Architecture
 
 ### Calculations
 
-1. Matrix-Matrix Multiplication on Multi-Dimension
-1. Matrix-Matrix Multiplication with tiling on Multi-Dimension
-1. Vector-Matrix Multiplication on Multi-Dimension
-1. Element-wise Matrix Multiplication on Multi-Dimension 
-1. Linear Self-Covariance Matrix on Multi-Dimensional 
-<!-- Add Formula -->
+1. Multi-Dimension Array & Multi-Dimension Array Multiplication
+1. Multi-Dimension Array & Multi-Dimension Array Multiplication with tiling
+1. Element-wise Multi-Dimension Array Multiplication
+1. Linear Self-Covariance Matrix of a Multi-Dimensional Array: $Cov(X, X) = \mathbb E[(X- \mathbb E[X])(X- \mathbb E[X])^T]$
 
 * Additionl Function: add variables for specifying dimension
 
@@ -46,32 +44,26 @@ matrix calculation using contiguous array.
 #### Fundamental Types
 
 ```C++
-// Naive matrix-matrix multiplication.
-Matrix operator* (Matrix const & mat1, Matrix const & mat2)
+// Naive Multi-Dimension Array & Multi-Dimension Array Multiplication.
+MultiDArray operator* (MultiDArray const & mat1, MultiDArray const & mat2)
 {
     // ...
 }
 
-// Tiled matrix-matrix multiplication.
-Matrix multiply_tile(Matrix const & mat1, Matrix const & mat2, size_t const tsize)
+// Tiled Multi-Dimension Array & Multi-Dimension Array Multiplication.
+MultiDArray multiply_tile(MultiDArray const & mat1, MultiDArray const & mat2, size_t const tsize)
 {
     // ...
 }
 
-// Vector-Matrix multiplication.
-Matrix operator* (Matrix const & mat, std::vector<double> const & vec)
+// Element-wise Multi-Dimension Array Multiplication.
+MultiDArray elem_multiply(MultiDArray const & mat1, MultiDArray const & mat2)
 {
     // ...
 }
 
-// Element-wise Matrix Multiplication
-Matrix elem_multiply(Matrix const & mat1, Matrix const & mat2)
-{
-    // ...
-}
-
-// Linear Self-Covariance Matrix Multiplication
-Matrix linear_CovMat(Matrix const & mat1)
+// Linear Self-Covariance Matrix of Multi-Dimension Array.
+MultiDArray linear_CovMat(MultiDArray const & mat1)
 {
     // ...
 }
@@ -82,37 +74,35 @@ Matrix linear_CovMat(Matrix const & mat1)
 #### Composite Types (struct)
 
 ```C++
-struct Matrix
+struct MultiDArray
 {
     public:
 
-        Matrix(std::vector<size_t>);
-        Matrix(std::vector<size_t>, std::vector<double> const & vec);
-        Matrix & operator=(std::vector<double> const & vec)
-        Matrix(Matrix const & other);
-        Matrix & operator=(Matrix const & other);
-        Matrix(Matrix && other);
-        Matrix & operator=(Matrix && other);
-        ~Matrix();
+        MultiDArray(std::vector<size_t>);
+        MultiDArray(std::vector<size_t>, std::vector<double> const & vec);
+        MultiDArray & operator=(std::vector<double> const & vec)
+        MultiDArray(MultiDArray const & other);
+        MultiDArray & operator=(MultiDArray const & other);
+        MultiDArray(MultiDArray && other);
+        MultiDArray & operator=(MultiDArray && other);
+        ~MultiDArray();
         double   operator() (std::vector<size_t>) const;
         double & operator() (std::vector<size_t>);
-        bool operator== (Matrix const & mat2);
-        bool operator!= (Matrix const & mat2);
+        bool operator== (MultiDArray const & mat2);
+        bool operator!= (MultiDArray const & mat2);
         size_t dim(size_t d) const;
         size_t size() const;
         double  buffer(size_t i) const;
         std::vector<double> buffer_vector() const;
 
-        // Naive matrix-matrix multiplication.
-        Matrix operator@ (Matrix const & other);
-        // Vector-Matrix multiplication.
-        Matrix operator@ (std::vector<double> const & vec);
-        // Tiled matrix-matrix multiplication.
-        Matrix multiply_tile(Matrix const & other, size_t const tsize);
-        // Element-wise Matrix Multiplication
-        Matrix operator* (Matrix const & other);        // element-wise multiplication
-        // Linear Self-Covariance Matrix Multiplication
-        Matrix Cov();
+        // Naive Array-Array multiplication.
+        MultiDArray operator@ (MultiDArray const & other)
+        // Tiled Array-Array multiplication.
+        MultiDArray multiply_tile(MultiDArray const & other, size_t const tsize);
+        // Element-wise Array Multiplication
+        MultiDArray operator* (MultiDArray const & other);        // element-wise multiplication
+        // Linear Self-Covariance Matrix of Array
+        MultiDArray Cov();
     
     private:
 
@@ -127,11 +117,12 @@ struct Matrix
 * The C++ user can link the library by compiling with:
     `g++ main.cpp -o -lcontiguous_matrix_calculate`
 
+
 ### Python
 * The python API can accept the numpy ndarray format as inputs, and call C++
     API using pybind11.
 * Users can use the library by adding:
-    `import contiguous_matrix_calculate`
+    `import contiguous_array_calculate`
 
 
 ### Overall Architecture
@@ -161,7 +152,8 @@ struct Matrix
     - Write `pytest`
     - Write Continuous Integration
 * Week 2 (11/19):
-    - C++: Implement *Element-wise Matrix Multiplication* in fundamental types
+    - C++: Implement *Element-wise Multi-Dimension Array Multiplication* in
+            fundamental types
 * Week 3 (11/26):
     - C++: Implement *Linear Self-Covariance Matrix Multiplication* in
             fundamental types
@@ -180,5 +172,6 @@ struct Matrix
 
 ## References
 
-1. [contiguous container library - arrays](https://github.com/foonathan/array)
-2. [contiguous array type](https://github.com/andrewthad/contiguous)
+1. [solvcon / modmesh, Actions](https://github.com/solvcon/modmesh/actions/runs/6983552231/job/19004850729)
+2. [contiguous container library - arrays](https://github.com/foonathan/array)
+3. [contiguous array type](https://github.com/andrewthad/contiguous)
