@@ -3,8 +3,8 @@
 #include <vector>
 #include <stdexcept>
 #include <cmath>
-// #include <pybind11/stl.h>
-// #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/pybind11.h>
 #include "mkl_cblas.h"
 
 using namespace std;
@@ -412,35 +412,35 @@ int main(int argc, char ** argv)
     MultiDArray ret_naive_com = mat1.multiply_naive(mat2);
     std::cout << "multiply_naive result Multi-D Array C (2x2) = AB:" << ret_naive_com << std::endl;
 
-    MultiDArray ret_mkl = MultiDArray(mat1, mat2);
+    MultiDArray ret_mkl = multiply_mkl(mat1, mat2);
     std::cout << "multiply_mkl result Multi-D Array C (2x2) = AB:" << ret_mkl << std::endl;
 
     return 0;
 }
 
 
-// PYBIND11_MODULE(_matrix, m) {   // module name
-//     m.doc() = "Matrix-Matrix Multiplication.";
+PYBIND11_MODULE(_MultiDArray, m) {   // module name
+    m.doc() = "MultiDArray & MultiDArray Multiplication.";
 
-//     pybind11::class_<Matrix>(m, "Matrix")
-//         .def(pybind11::init<size_t, size_t>())
-//         .def(pybind11::init<size_t, size_t, std::vector<double> const & >())
-//         .def("__getitem__",
-//             [](const Matrix& mat, std::pair<size_t, size_t> index) {
-//                 return mat(index.first, index.second);
-//             }
-//         )
-//         .def("__setitem__",
-//             [](Matrix& mat, std::pair<size_t, size_t> index, double value) {
-//                 mat(index.first, index.second) = value;
-//             }
-//         )
-//         .def("__eq__", &Matrix::operator==)
-//         .def("__ne__", &Matrix::operator!=)
-//         .def_property_readonly("nrow", &Matrix::nrow)
-//         .def_property_readonly("ncol", &Matrix::ncol);
+    pybind11::class_<MultiDArray>(m, "MultiDArray")
+        .def(pybind11::init<size_t, size_t>())
+        .def(pybind11::init<size_t, size_t, std::vector<double> const & >())
+        .def("__getitem__",
+            [](const MultiDArray& mat, std::pair<size_t, size_t> index) {
+                return mat(index.first, index.second);
+            }
+        )
+        .def("__setitem__",
+            [](MultiDArray& mat, std::pair<size_t, size_t> index, double value) {
+                mat(index.first, index.second) = value;
+            }
+        )
+        .def("__eq__", &MultiDArray::operator==)
+        .def("__ne__", &MultiDArray::operator!=)
+        .def_property_readonly("nrow", &MultiDArray::nrow)
+        .def_property_readonly("ncol", &MultiDArray::ncol);
 
-//     m.def("multiply_naive", &multiply_naive, pybind11::arg("mat1"), pybind11::arg("mat2"));
-//     m.def("multiply_tile", &multiply_tile, pybind11::arg("mat1"), pybind11::arg("mat2"), pybind11::arg("tsize"));
-//     m.def("multiply_mkl", &multiply_mkl, pybind11::arg("mat1"), pybind11::arg("mat2"));
-// }
+    m.def("multiply_naive", &multiply_naive, pybind11::arg("mat1"), pybind11::arg("mat2"));
+    m.def("multiply_tile", &multiply_tile, pybind11::arg("mat1"), pybind11::arg("mat2"), pybind11::arg("tsize"));
+    m.def("multiply_mkl", &multiply_mkl, pybind11::arg("mat1"), pybind11::arg("mat2"));
+}
