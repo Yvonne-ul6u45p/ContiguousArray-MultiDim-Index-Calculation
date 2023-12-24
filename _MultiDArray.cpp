@@ -1,446 +1,323 @@
+
+#include "SimpleArray.hpp"
+#include "small_vector.hpp"
 #include <iostream>
 #include <iomanip>
 #include <vector>
 #include <stdexcept>
 #include <cmath>
+#include <initializer_list>
 #include <pybind11/stl.h>
 #include <pybind11/pybind11.h>
-#include "mkl_cblas.h"
+#include <pybind11/numpy.h>
+// #include "mkl_cblas.h"
 
 using namespace std;
 
-class MultiDArray {
+// namespace modmesh
+// {
 
-    public:
+template <typename T>
+class MultiDArray : public SimpleArray<T>
+{
 
-        MultiDArray(size_t nrow, size_t ncol)
-        : m_nrow(nrow), m_ncol(ncol)
+public:
+    using SimpleArray<T>::SimpleArray;
+    using shape_type = small_vector<size_t>;
+
+    // Element-wise multiplication function
+    MultiDArray<T> elementwise_multiply(const MultiDArray<T> &other) const
+    {
+        if (!(this->shape() == other.shape()))
         {
-            reset_buffer(nrow, ncol);
+            throw std::invalid_argument("Shapes of MultiDArrays must match for element-wise multiplication.");
         }
 
-        MultiDArray(size_t nrow, size_t ncol, vector<double> const & vec)
-        : m_nrow(nrow), m_ncol(ncol)
+        MultiDArray<T> result(this->shape());
+
+        for (size_t i = 0; i < this->size(); ++i)
         {
-            reset_buffer(nrow, ncol);
-            (*this) = vec;
+            result[i] = this->data(i) * other.data(i);
         }
 
-        MultiDArray & operator=(vector<double> const & vec)
+        return result;
+    }
+
+    T sum() const {
+        // Sum over all dimensions by calling sum with each dimension.
+        auto result = 0;
+        for (size_t i = 0; i < this->size(); ++i) {
+            result += this->data(i);
+        }
+        return result;
+    }
+    MultiDArray<T> sum(size_t dim) const
+    {
+        if (dim >= this->ndim())
         {
-            if (size() != vec.size())
-            {
-                throw out_of_range("number of elements mismatch");
-            }
-
-            size_t k = 0;
-            for (size_t i=0; i<m_nrow; ++i)
-            {
-                for (size_t j=0; j<m_ncol; ++j)
-                {
-                    (*this)(i,j) = vec[k];
-                    ++k;
-                }
-            }
-
-            return *this;
+            throw std::out_of_range("Invalid dimension for sum operation.");
         }
 
-        MultiDArray(MultiDArray const & other)
-        : m_nrow(other.m_nrow), m_ncol(other.m_ncol)
+        small_vector<size_t> new_shape = this->shape();
+        new_shape[dim] = 1;
+        MultiDArray<T> result(new_shape, 0);
+
+        for (size_t i = 0; i < this->size(); ++i)
         {
-            reset_buffer(other.m_nrow, other.m_ncol);
-            for (size_t i=0; i<m_nrow; ++i)
-            {
-                for (size_t j=0; j<m_ncol; ++j)
-                {
-                    (*this)(i,j) = other(i,j);
-                }
-            }
+            // Compute the corresponding index in the result array.
+            small_vector<size_t> idx_new = this->calculate_index(i);
+            idx_new[dim] = 0;
+            result.at(idx_new) += this->data(i);
         }
 
-        MultiDArray & operator=(MultiDArray const & other)
+        return result;
+    }
+
+    shape_type calculate_index(size_t index) const
+    {
+        shape_type idx_new(this->ndim());
+        for (size_t i = 0; i < this->ndim(); ++i)
         {
-            if (this == &other) {
-                return *this;
-            }
-            if (m_nrow != other.m_nrow || m_ncol != other.m_ncol) {
-                reset_buffer(other.m_nrow, other.m_ncol);
-            }
-            for (size_t i=0; i<m_nrow; ++i)
-            {
-                for (size_t j=0; j<m_ncol; ++j)
-                {
-                    (*this)(i,j) = other(i,j);
-                }
-            }
-            return *this;
+            idx_new[i] = index / this->stride(i);
+            index -= idx_new[i] * this->stride(i);
+        }
+        return idx_new;
+    }
+
+    bool operator==(const MultiDArray<T> &other)
+    {
+        if (!(this->shape() == other.shape()))
+        {
+            return false;
         }
 
-        MultiDArray(MultiDArray && other)
-        : m_nrow(other.m_nrow), m_ncol(other.m_ncol)
+        for (size_t i = 0; i < this->size(); ++i)
         {
-            reset_buffer(0, 0);
-            swap(m_nrow, other.m_nrow);
-            swap(m_ncol, other.m_ncol);
-            swap(m_buffer, other.m_buffer);
-        }
-
-        MultiDArray & operator=(MultiDArray && other)
-        {
-            if (this == &other) {
-                return *this;
-            }
-            reset_buffer(0, 0);
-            swap(m_nrow, other.m_nrow);
-            swap(m_ncol, other.m_ncol);
-            swap(m_buffer, other.m_buffer);
-            return *this;
-        }
-
-        ~MultiDArray()   // return, clear buffer
-        {
-            reset_buffer(0, 0);
-        }
-
-        double   operator() (size_t row, size_t col) const
-        {
-            return m_buffer[index(row, col)];
-        }
-        double & operator() (size_t row, size_t col)
-        {
-            return m_buffer[index(row, col)];
-        }
-
-        bool operator== (MultiDArray const & other)
-        {
-            if ((m_ncol != other.ncol()) || (m_nrow != other.ncol()))
+            if (this->data(i) != other.data(i))
             {
                 return false;
             }
-
-            for (size_t i=0; i<m_nrow; ++i)
-            {
-                for (size_t j=0; j<m_ncol; ++j)
-                {
-                    if (m_buffer[index(i, j)] != other.m_buffer[other.index(i, j)])
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
         }
 
-        bool operator!= (MultiDArray const & other)
-        {
-            return !(*this == other);
-        }
+        return true;
+    }
 
-        size_t nrow() const {
-            return m_nrow;
-        }
-        size_t ncol() const {
-            return m_ncol;
-        }
-
-        size_t size() const {
-            return m_nrow * m_ncol;
-        }
-        double  buffer(size_t i) const {
-            return m_buffer[i];
-        }
-        double *buffer() const {
-            return m_buffer;
-        }
-        std::vector<double> buffer_vector() const
-        {
-            return std::vector<double>(m_buffer, m_buffer+size());
-        }
-
-        // Naive Multi-Dimension Array & Multi-Dimension Array Multiplication.
-        MultiDArray multiply_naive(MultiDArray const & other)
-        {
-            // validate_multiplication
-            if (this->ncol() != other.nrow()) {
-                throw std::out_of_range(
-                    "the number of first matrix column "
-                    "differs from that of second matrix row");
-            }
-
-            MultiDArray ret(this->nrow(), other.ncol());
-
-            for (size_t i=0; i<ret.nrow(); ++i)
-            {
-                for (size_t k=0; k<ret.ncol(); ++k)
-                {
-                    double index_sum = 0;
-                    for (size_t j=0; j<this->ncol(); ++j)    // j<mat2.nrow()
-                    {
-                        // std::cout << i << j << k << std::endl;
-                        index_sum += this->m_buffer[index(i, j)] * other(j,k);
-                    }
-                    ret(i,k) = index_sum;
-                }
-            }
-
-            return ret;
-        }
-
-        // Tiled Multi-Dimension Array & Multi-Dimension Array Multiplication.
-        MultiDArray multiply_tile(MultiDArray const & other, size_t const tsize) {
-            // std::cout << ">> multiply_tile(Matrix const & other, size_t const tsize)" << std::endl;
-            // validate_multiplication
-            if (this->ncol() != other.nrow()) {
-                throw std::out_of_range(
-                    "the number of first matrix column "
-                    "differs from that of second matrix row");
-            }
-
-            MultiDArray ret(this->nrow(), other.ncol());
-
-            // const size_t ntrow1 = std::ceil(mat1.nrow() / tsize);
-            // const size_t ntcol1 = std::ceil(mat1.ncol() / tsize);
-            // const size_t ntrow2 = std::ceil(mat2.nrow() / tsize);
-            // const size_t ntcol2 = std::ceil(mat2.ncol() / tsize);
-            // cout << ntrow1 << " x " << ntcol1 << ", " << ntrow1 << " x " << ntcol2  << endl;
-
-            for (size_t ti_row=0; ti_row<this->nrow(); ti_row+=tsize)
-            {
-                for (size_t ti_col=0; ti_col<other.ncol(); ti_col+=tsize)
-                {
-                    for (size_t ti_j=0; ti_j<this->ncol(); ti_j+=tsize)
-                    {
-                        // within a tile
-                        size_t tr_end = std::min(this->nrow(), ti_row + tsize);
-                        size_t tc_end = std::min(this->ncol(), ti_col + tsize);
-                        size_t tj_end = std::min(this->ncol(), ti_j   + tsize);
-                        // std::cout << ti_row << " " << ti_j << " " << ti_col << ", " << tr_end << " " << tj_end << " " << tc_end << std::endl;
-                        
-                        for (size_t i=ti_row; i<tr_end; ++i)
-                        {
-                            for (size_t k=ti_col; k<tc_end; ++k)
-                            {
-                                for (size_t j=ti_j; j<tj_end; ++j)    // j<mat2.nrow()
-                                {
-                                    // std::cout << ret(i,k) << " " << i << j << k << " " << mat1(i,j) << " * " << mat2(j,k) << std::endl;
-                                    ret(i,k) += m_buffer[index(i, j)] * other(j,k);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            return ret;
-        }
-
-        // Element-wise Multi-Dimension Array Multiplication
-        MultiDArray elemwise(MultiDArray const & other) {
-            // operator* (Matrix const & other)" << std::endl;
-        }
-
-        MultiDArray Sum(){};
-        MultiDArray Mean(){};
-        MultiDArray Var(){};
-        MultiDArray Std(){};
-        // Linear Self-Covariance Multi-Dimension Array Multiplication
-        MultiDArray Cov(){};
-
-    private:
-
-        size_t index(size_t row, size_t col) const
-        {
-            return row + col * m_nrow;
-        }
-
-        void reset_buffer(size_t nrow, size_t ncol)
-        {
-            if (m_buffer) {
-                delete[] m_buffer;
-            }
-            const size_t nelement = nrow * ncol;
-            if (nelement) {
-                m_buffer = new double[nelement]();
-            }
-            else {
-                m_buffer = nullptr;
-            }
-            m_nrow = nrow;
-            m_ncol = ncol;
-        }
-
-        size_t m_nrow = 0;
-        size_t m_ncol = 0;
-        double * m_buffer = nullptr;
-
+    bool operator!=(const MultiDArray<T> &other)
+    {
+        return !(*this == other);
+    }
 };
 
-
-void validate_multiplication(MultiDArray const & mat1, MultiDArray const & mat2)
+template <typename T>
+MultiDArray<T> elementwise_multiply(MultiDArray<T> const &arr1, MultiDArray<T> const &arr2)
 {
-    if (mat1.ncol() != mat2.nrow())
+    if (!(arr1.shape() == arr2.shape()))
     {
-        throw std::out_of_range(
-            "the number of first matrix column "
-            "differs from that of second matrix row");
+        throw std::invalid_argument("Shapes of MultiDArrays must match for element-wise multiplication.");
     }
+
+    MultiDArray<T> result(arr1.shape());
+
+    for (size_t i = 0; i < arr1.size(); ++i)
+    {
+        result[i] = arr1.data(i) * arr2.data(i);
+    }
+
+    return result;
 }
 
-// Naive Multi-Dimension Array & Multi-Dimension Array Multiplication.
-MultiDArray multiply_naive(MultiDArray const & mat1, MultiDArray const & mat2)
+
+// template <typename T>
+// T sum(MultiDArray<T> const &arr) {
+//     // Sum over all dimensions by calling sum with each dimension.
+//     auto result = 0;
+//     for (size_t i = 0; i < arr.size(); ++i) {
+//         result += arr.data(i);
+//     }
+//     return result;
+// }
+template <typename T>
+MultiDArray<T> sum(MultiDArray<T> const &arr, size_t dim)
 {
-    validate_multiplication(mat1, mat2);
-
-    MultiDArray ret(mat1.nrow(), mat2.ncol());
-
-    for (size_t i=0; i<ret.nrow(); ++i)
+    if (dim >= arr.ndim())
     {
-        for (size_t k=0; k<ret.ncol(); ++k)
+        throw std::out_of_range("Invalid dimension for sum operation.");
+    }
+
+    small_vector<size_t> new_shape = arr.shape();
+    new_shape[dim] = 1; // The size of the summed dimension will be reduced to 1.
+    MultiDArray<T> result(new_shape, 0);
+
+    for (size_t i = 0; i < arr.size(); ++i)
+    {
+        // Compute the corresponding index in the result array.
+        small_vector<size_t> idx_new = arr.calculate_index(i);
+        idx_new[dim] = 0;
+        result.at(idx_new) += arr.data(i);
+    }
+
+    return result;
+}
+
+
+template <typename T>
+std::ostream &print_recursive(std::ostream &ostr, const MultiDArray<T> &arr, std::vector<size_t> indices, size_t dim)
+{
+    if (dim == arr.ndim())
+    {
+        // Reached the last dimension, print the element.
+        ostr << arr.at(indices) << " ";
+    }
+    else
+    {
+        // Iterate over the current dimension and recurse to the next one.
+        size_t size = arr.shape(dim);
+        ostr << std::endl;
+        for (size_t i = 0; i < size; ++i)
         {
-            double index_sum = 0;
-            for (size_t j=0; j<mat1.ncol(); ++j)    // j<mat2.nrow()
-            {
-                // std::cout << i << j << k << std::endl;
-                index_sum += mat1(i,j) * mat2(j,k);
-            }
-            ret(i,k) = index_sum;
+            indices[dim] = i;
+            print_recursive(ostr, arr, indices, dim + 1);
         }
+        // ostr << "]";
     }
-
-    return ret;
-}
-
-// Tiled Multi-Dimension Array & Multi-Dimension Array Multiplication.
-MultiDArray multiply_tile(MultiDArray const & mat1, MultiDArray const & mat2, size_t const tsize)
-{
-    validate_multiplication(mat1, mat2);
-
-    MultiDArray ret(mat1.nrow(), mat2.ncol());
-
-    // const size_t ntrow1 = std::ceil(mat1.nrow() / tsize);
-    // const size_t ntcol1 = std::ceil(mat1.ncol() / tsize);
-    // const size_t ntrow2 = std::ceil(mat2.nrow() / tsize);
-    // const size_t ntcol2 = std::ceil(mat2.ncol() / tsize);
-    // cout << ntrow1 << " x " << ntcol1 << ", " << ntrow1 << " x " << ntcol2  << endl;
-
-    for (size_t ti_row=0; ti_row<mat1.nrow(); ti_row+=tsize)
-    {
-        for (size_t ti_col=0; ti_col<mat2.ncol(); ti_col+=tsize)
-        {
-            for (size_t ti_j=0; ti_j<mat1.ncol(); ti_j+=tsize)
-            {
-                // within a tile
-                size_t tr_end = std::min(mat1.nrow(), ti_row + tsize);
-                size_t tc_end = std::min(mat2.ncol(), ti_col + tsize);
-                size_t tj_end = std::min(mat1.ncol(), ti_j   + tsize);
-                // std::cout << ti_row << " " << ti_j << " " << ti_col << ", " << tr_end << " " << tj_end << " " << tc_end << std::endl;
-                
-                for (size_t i=ti_row; i<tr_end; ++i)
-                {
-                    for (size_t k=ti_col; k<tc_end; ++k)
-                    {
-                        for (size_t j=ti_j; j<tj_end; ++j)    // j<mat2.nrow()
-                        {
-                            // std::cout << ret(i,k) << " " << i << j << k << " " << mat1(i,j) << " * " << mat2(j,k) << std::endl;
-                            ret(i,k) += mat1(i,j) * mat2(j,k);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    return ret;
-}
-
-MultiDArray multiply_mkl(MultiDArray const & mat1, MultiDArray const & mat2)
-{
-    validate_multiplication(mat1, mat2);
-
-    MultiDArray ret(mat1.nrow(), mat2.ncol());
-
-    cblas_dgemm(
-        CblasRowMajor   /* const CBLAS_LAYOUT Layout */
-      , CblasNoTrans    /* const CBLAS_TRANSPOSE transa */
-      , CblasNoTrans    /* const CBLAS_TRANSPOSE transb */
-      , mat1.nrow()     /* const MKL_INT m */
-      , mat2.ncol()     /* const MKL_INT n */
-      , mat1.ncol()     /* const MKL_INT k */
-      , 1.0             /* const double alpha */
-      , mat1.buffer()   /* const double *a */
-      , mat1.ncol()     /* const MKL_INT lda */
-      , mat2.buffer()   /* const double *b */
-      , mat2.ncol()     /* const MKL_INT ldb */
-      , 0.0             /* const double beta */
-      , ret.buffer()    /* double * c */
-      , ret.ncol()      /* const MKL_INT ldc */
-    );
-
-    return ret;
-}
-
-
-std::ostream & operator << (std::ostream & ostr, MultiDArray const & mat)
-{
-    // std::cout << "operator << (print matrix)" << std::endl;
-    for (size_t i=0; i<mat.nrow(); ++i)
-    {
-        ostr << std::endl << " ";
-        for (size_t j=0; j<mat.ncol(); ++j)
-        {
-            ostr << " " << std::setw(2) << mat(i, j);
-        }
-    }
-
     return ostr;
 }
 
-int main(int argc, char ** argv)
+template <typename T>
+std::ostream &operator<<(std::ostream &ostr, const MultiDArray<T> &arr)
 {
-    std::cout << ">>> A(2x3) times B(3x2):" << std::endl;
-    MultiDArray mat1(2, 3, std::vector<double>{1, 2, 3, 4, 5, 6});
-    MultiDArray mat2(3, 2, std::vector<double>{1, 2, 3, 4, 5, 6});
+    const auto &shape = arr.shape();
+    std::vector<size_t> indices(shape.size(), 0);
+    return print_recursive(ostr, arr, indices, 0);
+}
 
-    std::cout << "Multi-D Array A (2x3):" << mat1 << std::endl;
-    std::cout << "Multi-D Array B (3x2):" << mat2 << std::endl;
+template <typename T, size_t N>
+std::ostream &operator<<(std::ostream &ostr, const small_vector<T, N> &shape)
+{
+    ostr << "small_vector: (";
+    for (size_t i = 0; i < shape.size(); ++i)
+    {
+        ostr << shape[i];
+        if (i < shape.size() - 1)
+        {
+            ostr << ", ";
+        }
+    }
+    ostr << ")";
+    return ostr;
+}
 
-    MultiDArray ret_naive = multiply_naive(mat1, mat2);
-    std::cout << "multiply_naive result Multi-D Array C (2x2) = AB:" << ret_naive << std::endl;
+int main(int argc, char **argv)
+{
+    small_vector<size_t> shape_vector1 = {2, 2, 3};
+    small_vector<size_t> shape_vector2 = {2, 2, 3};
 
-    MultiDArray ret_naive_com = mat1.multiply_naive(mat2);
-    std::cout << "multiply_naive result Multi-D Array C (2x2) = AB:" << ret_naive_com << std::endl;
+    MultiDArray<int> arr1(shape_vector1, 2);
+    MultiDArray<int> arr2(shape_vector2, 3);
+    MultiDArray<int> arr3(shape_vector2, 4);
 
-    MultiDArray ret_mkl = multiply_mkl(mat1, mat2);
-    std::cout << "multiply_mkl result Multi-D Array C (2x2) = AB:" << ret_mkl << std::endl;
+    arr1(0, 0, 0) = 1;
+    arr1(0, 0, 1) = 1;
+
+    MultiDArray<int> result = sum(arr1, 2);
+    std::cout << result << endl;
+    result = arr1.sum(2);
+    std::cout << result << endl;
+    int resultint = arr1.sum();
+    std::cout << resultint << endl;
+    // resultint = sum(arr1);
+    // std::cout << resultint << endl;
+
+    MultiDArray<int> result_comp = arr1.elementwise_multiply(arr2).elementwise_multiply(arr3);
+    MultiDArray<int> result_fund = elementwise_multiply(elementwise_multiply(arr1, arr2), arr3);
+
+    std::cout << result_comp << std::endl;
+    std::cout << result_fund << std::endl;
+    std::cout << (arr1 == arr2) << std::endl;
+    std::cout << (arr2 == arr2) << std::endl;
+    std::cout << (arr2 != arr3) << std::endl;
+    std::cout << (arr3 != arr3) << std::endl;
 
     return 0;
 }
 
+namespace py = pybind11;
 
-PYBIND11_MODULE(_MultiDArray, m) {   // module name
-    m.doc() = "MultiDArray & MultiDArray Multiplication.";
-
-    pybind11::class_<MultiDArray>(m, "MultiDArray")
-        .def(pybind11::init<size_t, size_t>())
-        .def(pybind11::init<size_t, size_t, std::vector<double> const & >())
+template <typename T>
+void bind_multidarray(py::module &m, const char *typestr) {
+    py::class_<MultiDArray<T>>(m, ("MultiDArray" + std::string(typestr)).c_str(), py::buffer_protocol())
+        .def(py::init<size_t>(), py::arg("length"))
+        .def(py::init<std::vector<size_t> const & >(), py::arg("shape"))
+        .def(py::init<std::vector<size_t> const &, T>(), py::arg("shape"), py::arg("value"))
+        .def(py::init<const small_vector<size_t>&>())
+        .def(py::init<const small_vector<size_t>&, T>())
         .def("__getitem__",
-            [](const MultiDArray& mat, std::pair<size_t, size_t> index) {
-                return mat(index.first, index.second);
+            [](const MultiDArray<T> &arr, py::tuple indices) {
+                if (indices.size() != arr.ndim()) {
+                    throw std::invalid_argument("Number of indices must match the number of dimensions.");
+                }
+
+                // Convert Python indices to C++ vector
+                std::vector<size_t> cxx_indices;
+                for (size_t i = 0; i < indices.size(); ++i) {
+                    cxx_indices.push_back(indices[i].cast<size_t>());
+                }
+
+                // Use at function with the converted indices
+                return arr.at(cxx_indices);
             }
         )
         .def("__setitem__",
-            [](MultiDArray& mat, std::pair<size_t, size_t> index, double value) {
-                mat(index.first, index.second) = value;
+            [](MultiDArray<T> &arr, py::tuple indices, T value) {
+                if (indices.size() != arr.ndim()) {
+                    throw std::invalid_argument("Number of indices must match the number of dimensions.");
+                }
+
+                // Convert Python indices to C++ vector
+                std::vector<size_t> cxx_indices;
+                for (size_t i = 0; i < indices.size(); ++i) {
+                    cxx_indices.push_back(indices[i].cast<size_t>());
+                }
+
+                // Use at function with the converted indices
+                arr.at(cxx_indices) = value;
             }
         )
-        .def("__eq__", &MultiDArray::operator==)
-        .def("__ne__", &MultiDArray::operator!=)
-        .def_property_readonly("nrow", &MultiDArray::nrow)
-        .def_property_readonly("ncol", &MultiDArray::ncol);
-
-    m.def("multiply_naive", &multiply_naive, pybind11::arg("mat1"), pybind11::arg("mat2"));
-    m.def("multiply_tile", &multiply_tile, pybind11::arg("mat1"), pybind11::arg("mat2"), pybind11::arg("tsize"));
-    m.def("multiply_mkl", &multiply_mkl, pybind11::arg("mat1"), pybind11::arg("mat2"));
+        .def("elementwise_multiply", &MultiDArray<T>::elementwise_multiply, py::arg("other"))
+        .def("sum", [](const MultiDArray<T>& self) -> T { return self.sum(); }, "Sum for MultiDArray")
+        .def("sum", [](const MultiDArray<T>& self, size_t dim) -> MultiDArray<T> { return self.sum(dim); }, "Sum for MultiDArray")
+        .def("__eq__", &MultiDArray<T>::operator==)
+        .def("__ne__", &MultiDArray<T>::operator!=)
+        .def_property_readonly("shape",
+            [typestr](MultiDArray<T>& mdarr) -> py::list {
+                // Convert small_vector to Python list
+                py::list result;
+                for (const auto& element : mdarr.shape()) {
+                    result.append(element);
+                }
+                return result;
+            }
+        )
+        .def_property_readonly("dim",
+            [](MultiDArray<T>& mdarr) -> size_t {
+                return mdarr.shape().size();
+            }
+        );
 }
+
+PYBIND11_MODULE(_MultiDArray, m) {
+    m.doc() = "MultiDArray & MultiDArray Calculation.";
+
+    // Bind MultiDArray for different data types
+    bind_multidarray<int64_t>(m, "Int64");
+    bind_multidarray<float>(m, "Float32");
+
+    m.def("elementwise_multiply", &elementwise_multiply<int64_t>, "Element-wise multiplication for MultiDArray");
+    m.def("elementwise_multiply", &elementwise_multiply<float>, "Element-wise multiplication for MultiDArray");
+    m.def("sum", &sum<int64_t>, "Sum for MultiDArray");
+    m.def("sum", &sum<float>, "Sum for MultiDArray");
+    // m.def("sumInt64", py::overload_cast<const MultiDArray<int64_t>&>(&sum<int64_t>), "Sum for MultiDArray (int64_t version)");
+    // m.def("sumFloat32", py::overload_cast<const MultiDArray<float>&>(&sum<float>), "Sum for MultiDArray (float version)");
+
+}
+
